@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('node:fs/promises');
+const fsSync = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const cron = require('node-cron');
@@ -9,6 +10,27 @@ const {
   verifyShopifyWebhookHmac
 } = require('./services/shopifyService');
 const { applySafetyBuffer, shouldSync, deductStock } = require('./syncLogic');
+
+function loadLocalEnvFile() {
+  const envPath = path.join(__dirname, '.env');
+  if (!fsSync.existsSync(envPath)) return;
+
+  const lines = fsSync.readFileSync(envPath, 'utf8').split('\n');
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+
+    const separatorIndex = line.indexOf('=');
+    if (separatorIndex === -1) continue;
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line.slice(separatorIndex + 1).trim();
+    if (!key || process.env[key] !== undefined) continue;
+    process.env[key] = value;
+  }
+}
+
+loadLocalEnvFile();
 
 const app = express();
 app.use(express.json({
@@ -116,6 +138,43 @@ async function syncSwilToShopify(options = {}) {
 
 app.get('/health', (_req, res) => {
   res.status(200).json({ ok: true, service: 'inventory-sync-middleware' });
+});
+
+app.get('/', (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    message: 'Inventory sync middleware is running.',
+    health: '/health',
+    configStatus: '/shopify/config-status'
+  });
+});
+
+app.get('/shopify/config-status', (_req, res) => {
+  const apiKey = process.env.SHOPIFY_API_KEY || process.env.SHOPIFY_CLIENT_ID;
+  const apiSecret = process.env.SHOPIFY_API_SECRET || process.env.SHOPIFY_CLIENT_SECRET;
+  const storeDomain = process.env.SHOPIFY_STORE_DOMAIN;
+  const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
+  const publicBaseUrl = process.env.PUBLIC_BASE_URL;
+
+  const missing = [];
+  if (!apiKey) missing.push('SHOPIFY_API_KEY (or SHOPIFY_CLIENT_ID)');
+  if (!apiSecret) missing.push('SHOPIFY_API_SECRET (or SHOPIFY_CLIENT_SECRET)');
+  if (!storeDomain) missing.push('SHOPIFY_STORE_DOMAIN');
+  if (!accessToken) missing.push('SHOPIFY_ACCESS_TOKEN');
+
+  return res.status(200).json({
+    ok: missing.length === 0,
+    configured: {
+      apiKey: Boolean(apiKey),
+      apiSecret: Boolean(apiSecret),
+      storeDomain: Boolean(storeDomain),
+      accessToken: Boolean(accessToken),
+      webhookSecret: Boolean(process.env.SHOPIFY_WEBHOOK_SECRET),
+      publicBaseUrl: Boolean(publicBaseUrl)
+    },
+    webhookUrl: publicBaseUrl ? `${publicBaseUrl}/webhook/shopify-order` : null,
+    missing
+  });
 });
 
 app.post('/webhook/shopify-order', async (req, res) => {

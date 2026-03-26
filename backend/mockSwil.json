@@ -1,0 +1,40 @@
+{
+  "products": [
+    {
+      "ItemCode": "SR-RED-38",
+      "ItemName": "Banarasi Saree",
+      "Size": "38",
+      "Color": "Red",
+      "StockQty": 5,
+      "Price": 4299,
+      "LastUpdated": "2026-03-26T09:10:00.000Z"
+    },
+    {
+      "ItemCode": "SR-RED-40",
+      "ItemName": "Banarasi Saree",
+      "Size": "40",
+      "Color": "Red",
+      "StockQty": 1,
+      "Price": 4299,
+      "LastUpdated": "2026-03-26T09:12:00.000Z"
+    },
+    {
+      "ItemCode": "ST-BLU-M",
+      "ItemName": "Anarkali Suit",
+      "Size": "M",
+      "Color": "Blue",
+      "StockQty": 8,
+      "Price": 3199,
+      "LastUpdated": "2026-03-26T09:15:00.000Z"
+    },
+    {
+      "ItemCode": "ST-GRN-L",
+      "ItemName": "Sharara Suit",
+      "Size": "L",
+      "Color": "Green",
+      "StockQty": 0,
+      "Price": 3599,
+      "LastUpdated": "2026-03-26T09:18:00.000Z"
+    }
+  ]
+}

@@ -4,33 +4,41 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const express = require('express');
 const cron = require('node-cron');
-const { updateShopifyInventory } = require('./services/shopifyService');
+const {
+  updateShopifyInventory,
+  verifyShopifyWebhookHmac
+} = require('./services/shopifyService');
 const { applySafetyBuffer, shouldSync, deductStock } = require('./syncLogic');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({
+  verify: (req, _res, buf) => {
+    req.rawBody = buf.toString('utf8');
+  }
+}));
 
 const DATA_FILE = path.join(__dirname, 'mockSwil.json');
 const STATUS_FILE = path.join(__dirname, 'syncStatus.json');
-const PORT = process.env.PORT || 4000;
+const PORT = Number(process.env.PORT || 4000);
+const SYNC_CRON = process.env.SYNC_CRON || '*/5 * * * *';
 
 /**
  * Example SKU mapping; in production this can come from DB/config.
  */
 const skuShopifyMapping = {
-  SR-RED-38: {
+  'SR-RED-38': {
     inventoryItemId: 'gid://shopify/InventoryItem/1111111111',
     locationId: 'gid://shopify/Location/2222222222'
   },
-  SR-RED-40: {
+  'SR-RED-40': {
     inventoryItemId: 'gid://shopify/InventoryItem/1111111112',
     locationId: 'gid://shopify/Location/2222222222'
   },
-  ST-BLU-M: {
+  'ST-BLU-M': {
     inventoryItemId: 'gid://shopify/InventoryItem/1111111113',
     locationId: 'gid://shopify/Location/2222222222'
   },
-  ST-GRN-L: {
+  'ST-GRN-L': {
     inventoryItemId: 'gid://shopify/InventoryItem/1111111114',
     locationId: 'gid://shopify/Location/2222222222'
   }
@@ -60,7 +68,6 @@ async function syncSwilToShopify(options = {}) {
   const products = data.products || [];
 
   for (const product of products) {
-    // Sync only if Swil row was changed after previous successful sync.
     if (!shouldSync(product.LastUpdated, syncState.perSku[product.ItemCode]?.lastSyncedAt)) {
       continue;
     }
@@ -107,8 +114,19 @@ async function syncSwilToShopify(options = {}) {
   return syncState;
 }
 
+app.get('/health', (_req, res) => {
+  res.status(200).json({ ok: true, service: 'inventory-sync-middleware' });
+});
+
 app.post('/webhook/shopify-order', async (req, res) => {
   try {
+    const webhookSecret = process.env.SHOPIFY_WEBHOOK_SECRET;
+    const hmacHeader = req.get('X-Shopify-Hmac-Sha256');
+
+    if (webhookSecret && !verifyShopifyWebhookHmac(req.rawBody, hmacHeader, webhookSecret)) {
+      return res.status(401).json({ ok: false, error: 'Invalid webhook signature.' });
+    }
+
     const { line_items: lineItems = [] } = req.body;
     const data = await readJson(DATA_FILE);
 
@@ -156,8 +174,7 @@ app.post('/sync/run', async (_req, res) => {
   }
 });
 
-// Poll every minute to keep Shopify inventory in sync with Swil updates.
-cron.schedule('* * * * *', () => {
+cron.schedule(SYNC_CRON, () => {
   syncSwilToShopify().catch((error) => {
     syncState.lastError = error.message;
   });
@@ -165,7 +182,7 @@ cron.schedule('* * * * *', () => {
 
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`Inventory middleware listening on port ${PORT}`);
+    console.log(`Inventory middleware listening on port ${PORT} (cron: ${SYNC_CRON})`);
   });
 }
 
@@ -175,5 +192,6 @@ module.exports = {
   syncSwilToShopify,
   syncState,
   DATA_FILE,
-  STATUS_FILE
+  STATUS_FILE,
+  SYNC_CRON
 };

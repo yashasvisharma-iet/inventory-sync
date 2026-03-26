@@ -1,5 +1,7 @@
 'use strict';
 
+const crypto = require('node:crypto');
+
 function getShopifyApiSdk() {
   // Lazy import so local tests can run without Shopify SDK installed.
   // Install @shopify/shopify-api in production.
@@ -35,6 +37,23 @@ function createShopifyGraphqlClient() {
       accessToken: SHOPIFY_ACCESS_TOKEN
     }
   });
+}
+
+function verifyShopifyWebhookHmac(rawBody, hmacHeader, secret) {
+  if (!rawBody || !hmacHeader || !secret) {
+    return false;
+  }
+
+  const digest = crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64');
+
+  const expected = Buffer.from(digest, 'utf8');
+  const received = Buffer.from(hmacHeader, 'utf8');
+
+  if (expected.length !== received.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(expected, received);
 }
 
 async function updateShopifyInventory(sku, qty, options = {}) {
@@ -88,4 +107,8 @@ async function updateShopifyInventory(sku, qty, options = {}) {
   return payload.inventoryLevel;
 }
 
-module.exports = { createShopifyGraphqlClient, updateShopifyInventory };
+module.exports = {
+  createShopifyGraphqlClient,
+  verifyShopifyWebhookHmac,
+  updateShopifyInventory
+};

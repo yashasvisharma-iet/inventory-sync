@@ -106,6 +106,15 @@ npm start
 
 Service runs on `http://localhost:4000` by default.
 
+### Expose backend with ngrok
+Run ngrok against a real local upstream (default backend port 4000):
+
+```bash
+ngrok http http://localhost:4000
+```
+
+Then set `PUBLIC_BASE_URL` to the generated `https://*.ngrok-free.dev` URL.
+
 ---
 
 ## 4) Environment variables
@@ -161,6 +170,14 @@ curl -X POST http://localhost:4000/webhook/shopify-order \
 
 If your backend is exposed via ngrok, configure Shopify webhook URL as:
 `https://<your-ngrok-domain>/webhook/shopify-order` (for example `https://august-viscoelastic-pamila.ngrok-free.dev/webhook/shopify-order`).
+
+### Troubleshooting ngrok `ERR_NGROK_8012`
+That error means ngrok is up but your upstream target is not valid/reachable.
+Quick checks:
+
+1. Make sure backend is running: `curl http://localhost:4000/health`
+2. Start ngrok with explicit upstream URL: `ngrok http http://localhost:4000`
+3. Open your ngrok URL root (`/`) and confirm JSON response from this service.
 
 ---
 

@@ -118,6 +118,34 @@ app.get('/health', (_req, res) => {
   res.status(200).json({ ok: true, service: 'inventory-sync-middleware' });
 });
 
+app.get('/shopify/config-status', (_req, res) => {
+  const apiKey = process.env.SHOPIFY_API_KEY || process.env.SHOPIFY_CLIENT_ID;
+  const apiSecret = process.env.SHOPIFY_API_SECRET || process.env.SHOPIFY_CLIENT_SECRET;
+  const storeDomain = process.env.SHOPIFY_STORE_DOMAIN;
+  const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
+  const publicBaseUrl = process.env.PUBLIC_BASE_URL;
+
+  const missing = [];
+  if (!apiKey) missing.push('SHOPIFY_API_KEY (or SHOPIFY_CLIENT_ID)');
+  if (!apiSecret) missing.push('SHOPIFY_API_SECRET (or SHOPIFY_CLIENT_SECRET)');
+  if (!storeDomain) missing.push('SHOPIFY_STORE_DOMAIN');
+  if (!accessToken) missing.push('SHOPIFY_ACCESS_TOKEN');
+
+  return res.status(200).json({
+    ok: missing.length === 0,
+    configured: {
+      apiKey: Boolean(apiKey),
+      apiSecret: Boolean(apiSecret),
+      storeDomain: Boolean(storeDomain),
+      accessToken: Boolean(accessToken),
+      webhookSecret: Boolean(process.env.SHOPIFY_WEBHOOK_SECRET),
+      publicBaseUrl: Boolean(publicBaseUrl)
+    },
+    webhookUrl: publicBaseUrl ? `${publicBaseUrl}/webhook/shopify-order` : null,
+    missing
+  });
+});
+
 app.post('/webhook/shopify-order', async (req, res) => {
   try {
     const webhookSecret = process.env.SHOPIFY_WEBHOOK_SECRET;

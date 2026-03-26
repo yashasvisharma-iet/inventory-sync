@@ -14,26 +14,31 @@ function createShopifyGraphqlClient() {
   const {
     SHOPIFY_API_KEY,
     SHOPIFY_API_SECRET,
+    SHOPIFY_CLIENT_ID,
+    SHOPIFY_CLIENT_SECRET,
     SHOPIFY_STORE_DOMAIN,
     SHOPIFY_ACCESS_TOKEN
   } = process.env;
+  const apiKey = SHOPIFY_API_KEY || SHOPIFY_CLIENT_ID;
+  const apiSecret = SHOPIFY_API_SECRET || SHOPIFY_CLIENT_SECRET;
+  const normalizedShopDomain = (SHOPIFY_STORE_DOMAIN || '').replace(/^https?:\/\//, '');
 
-  if (!SHOPIFY_API_KEY || !SHOPIFY_API_SECRET || !SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN) {
+  if (!apiKey || !apiSecret || !normalizedShopDomain || !SHOPIFY_ACCESS_TOKEN) {
     throw new Error('Missing Shopify configuration in environment variables.');
   }
 
   const shopify = shopifyApi({
-    apiKey: SHOPIFY_API_KEY,
-    apiSecretKey: SHOPIFY_API_SECRET,
+    apiKey,
+    apiSecretKey: apiSecret,
     scopes: ['write_inventory', 'read_inventory', 'read_products'],
-    hostName: SHOPIFY_STORE_DOMAIN.replace(/^https?:\/\//, ''),
+    hostName: normalizedShopDomain,
     apiVersion: LATEST_API_VERSION,
     isEmbeddedApp: false
   });
 
   return new shopify.clients.Graphql({
     session: {
-      shop: SHOPIFY_STORE_DOMAIN,
+      shop: normalizedShopDomain,
       accessToken: SHOPIFY_ACCESS_TOKEN
     }
   });

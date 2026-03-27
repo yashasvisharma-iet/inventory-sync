@@ -2,98 +2,170 @@
 
 const crypto = require('node:crypto');
 
-function getShopifyApiSdk() {
-  // Lazy import so local tests can run without Shopify SDK installed.
-  // Install @shopify/shopify-api in production.
-  // eslint-disable-next-line global-require
-  return require('@shopify/shopify-api');
-}
+/* ===================== PUBLIC API ===================== */
 
 function createShopifyGraphqlClient() {
-  const { shopifyApi, LATEST_API_VERSION } = getShopifyApiSdk();
-  const {
-    SHOPIFY_API_KEY,
-    SHOPIFY_API_SECRET,
-    SHOPIFY_CLIENT_ID,
-    SHOPIFY_CLIENT_SECRET,
-    SHOPIFY_STORE_DOMAIN,
-    SHOPIFY_ACCESS_TOKEN
-  } = process.env;
-  const apiKey = SHOPIFY_API_KEY || SHOPIFY_CLIENT_ID;
-  const apiSecret = SHOPIFY_API_SECRET || SHOPIFY_CLIENT_SECRET;
-  const normalizedShopDomain = (SHOPIFY_STORE_DOMAIN || '').replace(/^https?:\/\//, '');
+  const config = loadShopifyConfig();
+  validateShopifyConfig(config);
 
-  if (!apiKey || !apiSecret || !normalizedShopDomain || !SHOPIFY_ACCESS_TOKEN) {
+  const shopify = createShopifyApiInstance(config);
+  return createGraphqlClient(shopify, config);
+}
+
+function verifyShopifyWebhookHmac(rawBody, hmacHeader, secret) {
+  if (!isValidHmacInput(rawBody, hmacHeader, secret)) return false;
+
+  const expected = generateHmacDigest(rawBody, secret);
+  return compareHmac(expected, hmacHeader);
+}
+
+function buildShopifyInstallUrl(options = {}) {
+  if (!isValidInstallOptions(options)) return null;
+
+  return buildInstallUrl(options);
+}
+
+async function updateShopifyInventory(sku, qty, options = {}) {
+  const client = resolveGraphqlClient(options);
+  validateInventoryInput(sku, options);
+
+  const response = await executeInventoryMutation(client, qty, options);
+  return extractInventoryLevel(response, sku);
+}
+
+module.exports = {
+  buildShopifyInstallUrl,
+  createShopifyGraphqlClient,
+  verifyShopifyWebhookHmac,
+  updateShopifyInventory
+};
+
+/* ===================== CONFIG ===================== */
+
+function loadShopifyConfig() {
+  const env = process.env;
+
+  return {
+    apiKey: env.SHOPIFY_API_KEY || env.SHOPIFY_CLIENT_ID,
+    apiSecret: env.SHOPIFY_API_SECRET || env.SHOPIFY_CLIENT_SECRET,
+    shopDomain: normalizeShopDomain(env.SHOPIFY_STORE_DOMAIN),
+    accessToken: env.SHOPIFY_ACCESS_TOKEN
+  };
+}
+
+function validateShopifyConfig({ apiKey, apiSecret, shopDomain, accessToken }) {
+  if (!apiKey || !apiSecret || !shopDomain || !accessToken) {
     throw new Error('Missing Shopify configuration in environment variables.');
   }
+}
 
-  const shopify = shopifyApi({
-    apiKey,
-    apiSecretKey: apiSecret,
+/* ===================== SHOPIFY CLIENT ===================== */
+
+function createShopifyApiInstance(config) {
+  const { shopifyApi, LATEST_API_VERSION } = getShopifyApiSdk();
+
+  return shopifyApi({
+    apiKey: config.apiKey,
+    apiSecretKey: config.apiSecret,
     scopes: ['write_inventory', 'read_inventory', 'read_products'],
-    hostName: normalizedShopDomain,
+    hostName: config.shopDomain,
     apiVersion: LATEST_API_VERSION,
     isEmbeddedApp: false
   });
+}
 
+function createGraphqlClient(shopify, config) {
   return new shopify.clients.Graphql({
     session: {
-      shop: normalizedShopDomain,
-      accessToken: SHOPIFY_ACCESS_TOKEN
+      shop: config.shopDomain,
+      accessToken: config.accessToken
     }
   });
 }
 
-function verifyShopifyWebhookHmac(rawBody, hmacHeader, secret) {
-  if (!rawBody || !hmacHeader || !secret) {
-    return false;
-  }
+/* ===================== HMAC ===================== */
 
-  const digest = crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64');
-
-  const expected = Buffer.from(digest, 'utf8');
-  const received = Buffer.from(hmacHeader, 'utf8');
-
-  if (expected.length !== received.length) {
-    return false;
-  }
-
-  return crypto.timingSafeEqual(expected, received);
+function isValidHmacInput(rawBody, hmacHeader, secret) {
+  return rawBody && hmacHeader && secret;
 }
 
-function buildShopifyInstallUrl(options = {}) {
-  const {
-    apiKey,
-    shopDomain,
-    redirectUri,
-    scopes = 'read_inventory,write_inventory,read_products,read_orders',
-    state = 'inventory-sync-state'
-  } = options;
+function generateHmacDigest(rawBody, secret) {
+  return crypto
+    .createHmac('sha256', secret)
+    .update(rawBody, 'utf8')
+    .digest('base64');
+}
 
-  if (!apiKey || !shopDomain || !redirectUri) return null;
+function compareHmac(expected, received) {
+  const expectedBuffer = Buffer.from(expected, 'utf8');
+  const receivedBuffer = Buffer.from(received, 'utf8');
 
-  const normalizedShop = shopDomain.replace(/^https?:\/\//, '');
-  const url = new URL(`https://${normalizedShop}/admin/oauth/authorize`);
+  if (expectedBuffer.length !== receivedBuffer.length) return false;
+  return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
+}
+
+/* ===================== INSTALL URL ===================== */
+
+function isValidInstallOptions({ apiKey, shopDomain, redirectUri }) {
+  return apiKey && shopDomain && redirectUri;
+}
+
+function buildInstallUrl({ apiKey, shopDomain, redirectUri, scopes, state }) {
+  const url = new URL(`https://${normalizeShopDomain(shopDomain)}/admin/oauth/authorize`);
+
   url.searchParams.set('client_id', apiKey);
-  url.searchParams.set('scope', scopes);
+  url.searchParams.set('scope', scopes || defaultScopes());
   url.searchParams.set('redirect_uri', redirectUri);
-  url.searchParams.set('state', state);
+  url.searchParams.set('state', state || defaultState());
 
   return url.toString();
 }
 
-async function updateShopifyInventory(sku, qty, options = {}) {
-  const {
-    inventoryItemId,
-    locationId,
-    graphqlClient = createShopifyGraphqlClient()
-  } = options;
+function defaultScopes() {
+  return 'read_inventory,write_inventory,read_products,read_orders';
+}
 
+function defaultState() {
+  return 'inventory-sync-state';
+}
+
+/* ===================== INVENTORY ===================== */
+
+function resolveGraphqlClient({ graphqlClient }) {
+  return graphqlClient || createShopifyGraphqlClient();
+}
+
+function validateInventoryInput(sku, { inventoryItemId, locationId }) {
   if (!inventoryItemId || !locationId) {
     throw new Error(`Missing inventoryItemId/locationId for SKU ${sku}.`);
   }
+}
 
-  const mutation = `#graphql
+async function executeInventoryMutation(client, qty, { inventoryItemId, locationId }) {
+  const mutation = buildInventoryMutation();
+  const variables = buildInventoryVariables(qty, inventoryItemId, locationId);
+
+  return client.query({ data: { query: mutation, variables } });
+}
+
+function extractInventoryLevel(response, sku) {
+  const payload = response?.body?.data?.inventorySet;
+
+  if (!payload) {
+    throw new Error(`No inventorySet payload returned for SKU ${sku}.`);
+  }
+
+  if (payload.userErrors?.length) {
+    throw new Error(
+      `Shopify inventorySet errors for SKU ${sku}: ${JSON.stringify(payload.userErrors)}`
+    );
+  }
+
+  return payload.inventoryLevel;
+}
+
+function buildInventoryMutation() {
+  return `#graphql
     mutation inventorySet($input: InventorySetInput!) {
       inventorySet(input: $input) {
         inventoryLevel {
@@ -113,29 +185,24 @@ async function updateShopifyInventory(sku, qty, options = {}) {
       }
     }
   `;
+}
 
-  const variables = {
+function buildInventoryVariables(qty, inventoryItemId, locationId) {
+  return {
     input: {
       reason: 'correction',
       name: 'available',
       quantities: [{ inventoryItemId, locationId, quantity: qty }]
     }
   };
-
-  const response = await graphqlClient.query({ data: { query: mutation, variables } });
-  const payload = response?.body?.data?.inventorySet;
-
-  if (!payload) throw new Error(`No inventorySet payload returned for SKU ${sku}.`);
-  if (payload.userErrors?.length) {
-    throw new Error(`Shopify inventorySet errors for SKU ${sku}: ${JSON.stringify(payload.userErrors)}`);
-  }
-
-  return payload.inventoryLevel;
 }
 
-module.exports = {
-  buildShopifyInstallUrl,
-  createShopifyGraphqlClient,
-  verifyShopifyWebhookHmac,
-  updateShopifyInventory
-};
+/* ===================== UTIL ===================== */
+
+function normalizeShopDomain(domain = '') {
+  return domain.replace(/^https?:\/\//, '');
+}
+
+function getShopifyApiSdk() {
+  return require('@shopify/shopify-api');
+}

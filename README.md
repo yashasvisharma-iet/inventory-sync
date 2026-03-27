@@ -164,6 +164,26 @@ curl http://localhost:4000/shopify/config-status
 ```
 
 
+### Download billing-sheet CSV template (Excel-compatible)
+```bash
+curl http://localhost:4000/billing/template -o billing-sheet-template.csv
+```
+
+Open the CSV in Excel, update stock/price rows, save as CSV, then import:
+
+```bash
+curl -X POST http://localhost:4000/billing/import-csv \
+  -H "Content-Type: text/csv" \
+  --data-binary @billing-sheet-template.csv
+```
+
+Import triggers immediate sync to Shopify and frontend `/billing/products` reflects latest values.
+
+### Read current billing inventory snapshot
+```bash
+curl http://localhost:4000/billing/products
+```
+
 
 ### Integration status (for frontend dashboard / connect buttons)
 ```bash

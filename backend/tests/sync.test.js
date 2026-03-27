@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { applySafetyBuffer, shouldSync, deductStock } = require('../syncLogic');
 const { buildShopifyInstallUrl, verifyShopifyWebhookHmac } = require('../services/shopifyService');
+const { parseCsv, toCsv } = require('../billingSheetService');
 
 test('Safety buffer converts stock <= 1 to zero', () => {
   assert.equal(applySafetyBuffer(0), 0);
@@ -51,4 +52,33 @@ test('buildShopifyInstallUrl returns install link when required fields are prese
   assert.ok(url.includes('https://example.myshopify.com/admin/oauth/authorize'));
   assert.ok(url.includes('client_id=key123'));
   assert.ok(url.includes('state=abc123'));
+});
+
+
+test('parseCsv reads billing-sheet rows with required headers', () => {
+  const csv = [
+    'ItemCode,ItemName,Size,Color,StockQty,Price,LastUpdated',
+    'SR-RED-38,Banarasi Saree,38,Red,6,4299,2026-03-27T08:00:00.000Z'
+  ].join('\n');
+
+  const rows = parseCsv(csv);
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].ItemCode, 'SR-RED-38');
+  assert.equal(rows[0].StockQty, 6);
+});
+
+test('toCsv serializes billing inventory rows', () => {
+  const csv = toCsv([{
+    ItemCode: 'SKU-1',
+    ItemName: 'Item 1',
+    Size: 'M',
+    Color: 'Blue',
+    StockQty: 4,
+    Price: 99,
+    LastUpdated: '2026-03-27T08:00:00.000Z'
+  }]);
+
+  assert.equal(csv.includes('ItemCode,ItemName,Size,Color,StockQty,Price,LastUpdated'), true);
+  assert.equal(csv.includes('SKU-1,Item 1,M,Blue,4,99,2026-03-27T08:00:00.000Z'), true);
 });

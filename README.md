@@ -106,6 +106,20 @@ npm start
 
 Service runs on `http://localhost:4000` by default.
 
+### Frontend ↔ Backend wiring (Render frontend + ngrok backend)
+
+Set this in your frontend environment (locally in `.env`, later in Render environment variables):
+
+```bash
+VITE_BACKEND_BASE_URL=https://august-viscoelastic-pamila.ngrok-free.dev
+```
+
+The frontend now calls:
+- `GET /health`
+- `GET /shopify/config-status`
+
+to validate that middleware is reachable and Shopify env is complete.
+
 ### Expose backend with ngrok
 Run ngrok against a real local upstream (default backend port 4000):
 
@@ -191,6 +205,13 @@ Quick checks:
 1. Make sure backend is running: `curl http://localhost:4000/health`
 2. Start ngrok with explicit upstream URL: `ngrok http http://localhost:4000`
 3. Open your ngrok URL root (`/`) and confirm JSON response from this service.
+4. If ngrok page says `undefined://undefined`, your ngrok start command/config is using empty host/port vars. Start with a literal value: `ngrok http http://localhost:4000`
+5. Verify Shopify app URLs use your ngrok domain:
+   - **App URL**: `https://august-viscoelastic-pamila.ngrok-free.dev`
+   - **Allowed redirection URL(s)**: `https://august-viscoelastic-pamila.ngrok-free.dev/shopify/callback`
+6. Test from your ngrok URL (not localhost):
+   - `curl https://august-viscoelastic-pamila.ngrok-free.dev/health`
+   - `curl https://august-viscoelastic-pamila.ngrok-free.dev/shopify/config-status`
 
 ---
 

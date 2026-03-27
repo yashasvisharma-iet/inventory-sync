@@ -222,6 +222,55 @@ app.get('/integrations/status', (_req, res) => {
   });
 });
 
+app.get('/shopify/install', (req, res) => {
+  const apiKey = process.env.SHOPIFY_API_KEY || process.env.SHOPIFY_CLIENT_ID;
+  const storeDomain = req.query.shop || process.env.SHOPIFY_STORE_DOMAIN;
+  const publicBaseUrl = process.env.PUBLIC_BASE_URL;
+  const scopes = process.env.SHOPIFY_SCOPES || 'read_inventory,write_inventory,read_products,read_orders';
+
+  const installUrl = buildShopifyInstallUrl({
+    apiKey,
+    shopDomain: String(storeDomain || ''),
+    redirectUri: publicBaseUrl ? `${publicBaseUrl}/shopify/callback` : '',
+    scopes,
+    state: 'inventory-sync-state'
+  });
+
+  if (!installUrl) {
+    return res.status(400).json({
+      ok: false,
+      error: 'Unable to build Shopify install URL. Check SHOPIFY_API_KEY, SHOPIFY_STORE_DOMAIN and PUBLIC_BASE_URL.'
+    });
+  }
+
+  return res.redirect(302, installUrl);
+});
+
+app.get('/shopify/callback', (req, res) => {
+  const { code, shop, state } = req.query;
+  const expectedState = 'inventory-sync-state';
+
+  if (!code || !shop) {
+    return res.status(400).json({
+      ok: false,
+      error: 'Missing OAuth callback query params. Expected "code" and "shop".'
+    });
+  }
+
+  if (state !== expectedState) {
+    return res.status(400).json({
+      ok: false,
+      error: 'Invalid OAuth state.'
+    });
+  }
+
+  return res.status(200).json({
+    ok: true,
+    message: 'Shopify callback received. Exchange code for access token in production OAuth flow.',
+    shop
+  });
+});
+
 app.post('/webhook/shopify-order', async (req, res) => {
   try {
     const webhookSecret = process.env.SHOPIFY_WEBHOOK_SECRET;

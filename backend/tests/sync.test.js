@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { applySafetyBuffer, shouldSync, deductStock } = require('../syncLogic');
-const { verifyShopifyWebhookHmac } = require('../services/shopifyService');
+const { buildShopifyInstallUrl, verifyShopifyWebhookHmac } = require('../services/shopifyService');
 
 test('Safety buffer converts stock <= 1 to zero', () => {
   assert.equal(applySafetyBuffer(0), 0);
@@ -36,4 +36,19 @@ test('verifyShopifyWebhookHmac validates webhook signatures', () => {
   assert.equal(verifyShopifyWebhookHmac(rawBody, validHmac, secret), true);
   assert.equal(verifyShopifyWebhookHmac(rawBody, 'invalid-signature', secret), false);
   assert.equal(verifyShopifyWebhookHmac(rawBody, validHmac, ''), false);
+});
+
+
+test('buildShopifyInstallUrl returns install link when required fields are present', () => {
+  const url = buildShopifyInstallUrl({
+    apiKey: 'key123',
+    shopDomain: 'example.myshopify.com',
+    redirectUri: 'https://my-backend.com/shopify/callback',
+    scopes: 'read_inventory,write_inventory',
+    state: 'abc123'
+  });
+
+  assert.ok(url.includes('https://example.myshopify.com/admin/oauth/authorize'));
+  assert.ok(url.includes('client_id=key123'));
+  assert.ok(url.includes('state=abc123'));
 });

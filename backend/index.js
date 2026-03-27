@@ -11,6 +11,7 @@ const {
   verifyShopifyWebhookHmac
 } = require('./services/shopifyService');
 const { applySafetyBuffer, shouldSync, deductStock } = require('./syncLogic');
+const { parseCsv, toCsv } = require('./billingSheetService');
 
 function loadLocalEnvFile() {
   const envPath = path.join(__dirname, '.env');
@@ -269,6 +270,52 @@ app.get('/shopify/callback', (req, res) => {
     message: 'Shopify callback received. Exchange code for access token in production OAuth flow.',
     shop
   });
+});
+
+
+app.get('/billing/products', async (_req, res) => {
+  try {
+    const data = await readJson(DATA_FILE);
+    return res.status(200).json({ ok: true, products: data.products || [] });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.get('/billing/template', async (_req, res) => {
+  try {
+    const data = await readJson(DATA_FILE);
+    const csv = toCsv(data.products || []);
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="billing-sheet-template.csv"');
+    return res.status(200).send(csv);
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/billing/import-csv', express.text({ type: ['text/csv', 'application/csv', 'text/plain'] }), async (req, res) => {
+  try {
+    const products = parseCsv(req.body || '');
+
+    if (!products.length) {
+      return res.status(400).json({ ok: false, error: 'CSV did not contain valid rows.' });
+    }
+
+    await writeJson(DATA_FILE, { products });
+    const status = await syncSwilToShopify();
+
+    return res.status(200).json({
+      ok: true,
+      message: 'Billing sheet imported and Shopify sync triggered.',
+      importedCount: products.length,
+      products,
+      syncStatus: status
+    });
+  } catch (error) {
+    return res.status(400).json({ ok: false, error: error.message });
+  }
 });
 
 app.post('/webhook/shopify-order', async (req, res) => {

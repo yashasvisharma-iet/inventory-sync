@@ -5,6 +5,7 @@ import TrendingNow from './components/TrendingNow';
 import Collections from './components/Collections';
 import Journey from './components/Journey';
 import Footer from './components/Footer';
+import BillingInventory from './components/BillingInventory';
 
 function IntegrationStatus() {
   const backendBaseUrl = useMemo(
@@ -91,6 +92,7 @@ function App() {
       <Navbar />
       <main>
         <IntegrationStatus />
+        <BillingInventory />
         <Hero />
         <TrendingNow />
         <Collections />

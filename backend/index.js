@@ -6,6 +6,7 @@ const path = require('node:path');
 const express = require('express');
 const cron = require('node-cron');
 const {
+  buildShopifyInstallUrl,
   updateShopifyInventory,
   verifyShopifyWebhookHmac
 } = require('./services/shopifyService');
@@ -38,6 +39,22 @@ app.use(express.json({
     req.rawBody = buf.toString('utf8');
   }
 }));
+
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '*';
+const BILLING_SOFTWARE_URL = process.env.BILLING_SOFTWARE_URL || '';
+
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', FRONTEND_ORIGIN);
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  return next();
+});
+
 
 const DATA_FILE = path.join(__dirname, 'mockSwil.json');
 const STATUS_FILE = path.join(__dirname, 'syncStatus.json');
@@ -174,6 +191,34 @@ app.get('/shopify/config-status', (_req, res) => {
     },
     webhookUrl: publicBaseUrl ? `${publicBaseUrl}/webhook/shopify-order` : null,
     missing
+  });
+});
+
+
+app.get('/integrations/status', (_req, res) => {
+  const apiKey = process.env.SHOPIFY_API_KEY || process.env.SHOPIFY_CLIENT_ID;
+  const storeDomain = process.env.SHOPIFY_STORE_DOMAIN;
+  const publicBaseUrl = process.env.PUBLIC_BASE_URL;
+  const scopes = process.env.SHOPIFY_SCOPES || 'read_inventory,write_inventory,read_products,read_orders';
+
+  const installUrl = buildShopifyInstallUrl({
+    apiKey,
+    shopDomain: storeDomain,
+    redirectUri: publicBaseUrl ? `${publicBaseUrl}/shopify/callback` : '',
+    scopes,
+    state: 'inventory-sync-state'
+  });
+
+  return res.status(200).json({
+    ok: true,
+    shopify: {
+      storeDomain: storeDomain || null,
+      installUrl
+    },
+    billingSoftware: {
+      configured: Boolean(BILLING_SOFTWARE_URL),
+      url: BILLING_SOFTWARE_URL || null
+    }
   });
 });
 

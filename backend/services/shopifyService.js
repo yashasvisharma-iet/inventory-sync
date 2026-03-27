@@ -61,6 +61,27 @@ function verifyShopifyWebhookHmac(rawBody, hmacHeader, secret) {
   return crypto.timingSafeEqual(expected, received);
 }
 
+function buildShopifyInstallUrl(options = {}) {
+  const {
+    apiKey,
+    shopDomain,
+    redirectUri,
+    scopes = 'read_inventory,write_inventory,read_products,read_orders',
+    state = 'inventory-sync-state'
+  } = options;
+
+  if (!apiKey || !shopDomain || !redirectUri) return null;
+
+  const normalizedShop = shopDomain.replace(/^https?:\/\//, '');
+  const url = new URL(`https://${normalizedShop}/admin/oauth/authorize`);
+  url.searchParams.set('client_id', apiKey);
+  url.searchParams.set('scope', scopes);
+  url.searchParams.set('redirect_uri', redirectUri);
+  url.searchParams.set('state', state);
+
+  return url.toString();
+}
+
 async function updateShopifyInventory(sku, qty, options = {}) {
   const {
     inventoryItemId,
@@ -113,6 +134,7 @@ async function updateShopifyInventory(sku, qty, options = {}) {
 }
 
 module.exports = {
+  buildShopifyInstallUrl,
   createShopifyGraphqlClient,
   verifyShopifyWebhookHmac,
   updateShopifyInventory

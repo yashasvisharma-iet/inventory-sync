@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: inventory-sync-frontend
+    env: static
+    rootDir: frontend
+    buildCommand: "echo 'Static frontend ready'"
+    staticPublishPath: .

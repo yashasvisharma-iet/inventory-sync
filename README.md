@@ -131,6 +131,9 @@ Defined in `backend/.env.example`:
 - `SHOPIFY_ACCESS_TOKEN`
 - `SHOPIFY_WEBHOOK_SECRET`
 - `PUBLIC_BASE_URL` (public HTTPS URL, e.g. your ngrok URL)
+- `FRONTEND_ORIGIN` (allowed CORS origin for frontend, use your Render domain)
+- `SHOPIFY_SCOPES` (OAuth scopes used for generated install URL)
+- `BILLING_SOFTWARE_URL` (optional deep link to your billing software)
 
 ---
 
@@ -145,6 +148,16 @@ curl http://localhost:4000/health
 ```bash
 curl http://localhost:4000/shopify/config-status
 ```
+
+
+
+### Integration status (for frontend dashboard / connect buttons)
+```bash
+curl http://localhost:4000/integrations/status
+```
+Returns:
+- Shopify store domain + generated install URL
+- Billing software URL availability
 
 ### Run sync now (SwilERP → Shopify)
 ```bash
@@ -218,3 +231,25 @@ If you want, next step I can add:
 1. Redis-backed sync state (drop-in),
 2. DB-based SKU mapping,
 3. real Swil API adapter interface.
+
+
+## 9) Frontend (Render static deploy)
+
+A ready static frontend is included in `/frontend` and already points to your provided ngrok backend in `frontend/runtime-config.js`.
+
+### Local frontend preview
+```bash
+cd frontend
+python3 -m http.server 4173
+```
+Open `http://localhost:4173`.
+
+### Deploy frontend to Render
+1. Push this repo to GitHub.
+2. In Render, create a **Static Site** from this repo.
+3. Render can auto-detect `render.yaml` from repo root.
+4. After deploy, edit `frontend/runtime-config.js` if backend URL changes.
+
+### Important
+- Backend must allow your Render domain via `FRONTEND_ORIGIN` env in backend.
+- If ngrok URL changes, update `frontend/runtime-config.js` and redeploy frontend.
